@@ -154,7 +154,7 @@ document.querySelector('form').addEventListener('submit', e => { e.preventDefaul
 # page key -> (url, html file, output json, link to the other page)
 PAGES = {
     "bad": ("/", "bad_website/bad_website.html", "bad_data.json", "/good", "Switch to the good form"),
-    "good": ("/good", "good_website.html", "data.json", "/", "Switch to the bad form"),
+    "good": ("/good", "good_website/good_website.html", "data.json", "/", "Switch to the bad form"),
 }
 
 
