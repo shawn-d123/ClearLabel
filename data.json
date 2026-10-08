@@ -1,0 +1,38 @@
+[
+  {
+    "order": 1,
+    "question": "First name:",
+    "label": "First name:",
+    "type": "text",
+    "name": "fname",
+    "choices": null,
+    "answer": ""
+  },
+  {
+    "order": 2,
+    "question": "Last name:",
+    "label": "Last name:",
+    "type": "text",
+    "name": "sname",
+    "choices": null,
+    "answer": ""
+  },
+  {
+    "order": 3,
+    "question": "What medication do you need:",
+    "label": "What medication do you need:",
+    "type": "text",
+    "name": "medication",
+    "choices": null,
+    "answer": ""
+  },
+  {
+    "order": 4,
+    "question": "How many do you need:",
+    "label": "How many do you need:",
+    "type": "text",
+    "name": "number",
+    "choices": null,
+    "answer": ""
+  }
+]

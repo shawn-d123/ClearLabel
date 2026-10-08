@@ -61,4 +61,4 @@ def convert_bad_to_good(input_file_path: str, output_file_path: str):
 
 
 if __name__ == "__main__":
-    convert_bad_to_good("bad_website\\bad_website.html", "good_website.html")
+    convert_bad_to_good("bad_website\\bad_website.html", "good_website/good_website.html")
