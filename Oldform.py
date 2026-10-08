@@ -14,4 +14,5 @@ def get_html(path_to_page : str):
     print(form_html)
     print("\nForm text")
     print(form_text)
-get_html("bad_website\\bad_website.html")
+    return form_html, form_text
+old_form_html, old_form_text = get_html("bad_website\\bad_website.html")
