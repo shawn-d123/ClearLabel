@@ -1,15 +1,21 @@
 
-fetch("data.json")
+let complete = false;
+
+
+async function fetching() {
+    fetch("data.json")
     .then(response => response.json())
     .then(data => {
-        for (const key in data) {
-            const input = document.getElementById(key);
-
+        data.forEach(item => {
+            const input = document.getElementById(item.name);
             if (input) {
-                input.value = data[key];
+                input.value = item.answer;
             }
-        }
+        });
+        complete = true;
     });
+}
+
 
 
 
