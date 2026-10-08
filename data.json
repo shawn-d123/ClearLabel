@@ -6,7 +6,7 @@
     "type": "text",
     "name": "fname",
     "choices": null,
-    "answer": "shawn"
+    "answer": ""
   },
   {
     "order": 2,
@@ -15,7 +15,7 @@
     "type": "text",
     "name": "sname",
     "choices": null,
-    "answer": "dsouza"
+    "answer": ""
   },
   {
     "order": 3,
@@ -24,7 +24,7 @@
     "type": "text",
     "name": "medication",
     "choices": null,
-    "answer": "paracetamol"
+    "answer": ""
   },
   {
     "order": 4,
@@ -33,6 +33,6 @@
     "type": "text",
     "name": "number",
     "choices": null,
-    "answer": "3"
+    "answer": ""
   }
 ]

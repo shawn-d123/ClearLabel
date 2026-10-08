@@ -7,10 +7,11 @@ Each saved entry has: order, question, label, type, name, choices, answer.
 
 Usage:
     python fill_form.py
-Opens one browser page that starts on the bad form. Keys (or the buttons):
-    Alt+N  run Newform: convert the bad form into the good form and show it
-    Alt+S  fill & save the answers (good -> data.json, bad -> bad_data.json)
-    Alt+B  go back to the bad form
+Opens one browser page that starts on the bad form.
+    F2  run Newform: convert the bad form into the good form and show it
+    F8  go back to the bad form
+    Submit button on a form: saves the answers (good -> data.json,
+    bad -> bad_data.json)
 Newform needs: pip install beautifulsoup4 lxml. Stop the server with Ctrl+C.
 """
 import argparse
@@ -163,9 +164,8 @@ SHELL = """<!DOCTYPE html>
 </style></head><body>
 <div id="bar">
   <span id="state">BAD FORM</span>
-  <button id="b-new">Alt+N &middot; Convert to good form</button>
-  <button id="b-save">Alt+S &middot; Fill &amp; save</button>
-  <button id="b-back">Alt+B &middot; Back to bad form</button>
+  <button id="b-new">F2 &middot; Convert to good form</button>
+  <button id="b-back">F8 &middot; Back to bad form</button>
   <span id="msg"></span>
 </div>
 <iframe id="f" src="/form/bad"></iframe>
@@ -186,18 +186,17 @@ async function clConvert() {
 async function clSave() {
   const answers = f.contentWindow.clCollect();
   const r = await fetch('/save?page=' + current, {method: 'POST', body: JSON.stringify(answers)});
-  msg(r.ok ? 'Saved to ' + (await r.text()) : 'Save failed');
+  if (!r.ok) return msg('Save failed');
+  const out = await r.text();
+  document.getElementById('state').textContent = 'SAVED';
+  msg('Answers saved to ' + out);
 }
-function clKey(e) {
-  if (!e.altKey) return;
-  const k = e.key.toLowerCase();
-  if (k === 'n') { e.preventDefault(); clConvert(); }
-  else if (k === 's') { e.preventDefault(); clSave(); }
-  else if (k === 'b') { e.preventDefault(); show('bad'); msg(''); }
+function clKey(e) {  // F2 and F8 have no browser shortcut
+  if (e.key === 'F2') { e.preventDefault(); clConvert(); }
+  else if (e.key === 'F8') { e.preventDefault(); show('bad'); msg(''); }
 }
 document.addEventListener('keydown', clKey);
 document.getElementById('b-new').onclick = clConvert;
-document.getElementById('b-save').onclick = clSave;
 document.getElementById('b-back').onclick = () => { show('bad'); msg(''); };
 </script></body></html>
 """
