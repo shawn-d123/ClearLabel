@@ -9,7 +9,8 @@ Usage:
     python fill_form.py
 Opens one browser page that starts on the bad form.
     F2  run Newform: convert the bad form into the good form and show it
-    F8  go back to the bad form
+    F8  go back to the bad form, filled in from data.json; then click Verify
+        to check the old form's values still match data.json
     Submit button on a form: saves the answers (good -> data.json,
     bad -> bad_data.json)
 Newform needs: pip install beautifulsoup4 lxml. Stop the server with Ctrl+C.
@@ -134,6 +135,15 @@ FILES = {"bad": (BAD_FILE, "bad_data.json"), "good": (GOOD_FILE, "data.json")}
 # Runs inside the form frame: collects answers, forwards key presses to the shell.
 FRAME_JS = """
 <script>
+window.clControls = () => [...document.querySelectorAll('form input, form select, form textarea')]
+  .filter(el => !['submit','button','reset','hidden','image'].includes(el.type));
+window.clFill = function (values) {
+  clControls().forEach((el, i) => { if (i < values.length && values[i] != null) el.value = values[i]; });
+};
+window.clMark = function (flags) {
+  clControls().forEach((el, i) => { el.style.outline = flags[i] ? '3px solid #2a2' : '3px solid #c22'; });
+};
+window.clValues = () => clControls().map(el => el.value);
 window.clCollect = function () {
   const answers = {};
   let n = 0;
@@ -165,15 +175,40 @@ SHELL = """<!DOCTYPE html>
 <div id="bar">
   <span id="state">BAD FORM</span>
   <button id="b-new">F2 &middot; Convert to good form</button>
-  <button id="b-back">F8 &middot; Back to bad form</button>
+  <button id="b-back">F8 &middot; Back to bad form (filled from data.json)</button>
+  <button id="b-verify" hidden>Verify</button>
   <span id="msg"></span>
 </div>
 <iframe id="f" src="/form/bad"></iframe>
 <script>
 let current = 'bad';
+async function goldRows() {
+  const r = await fetch('/data/good');
+  return r.ok ? await r.json() : null;
+}
+document.getElementById('f').addEventListener('load', async () => {
+  if (!prefill) return;
+  const rows = await goldRows();
+  if (!rows) return msg('No data.json yet: fill in and submit the good form first.');
+  f.contentWindow.clFill(rows.map(r => r.answer));
+  msg('Old form filled from data.json. Click Verify.');
+});
+async function clVerify() {
+  const rows = await goldRows();
+  if (!rows) return msg('No data.json to verify against.');
+  const now = f.contentWindow.clValues();
+  const flags = rows.map((r, i) => String(now[i] ?? '') === String(r.answer ?? ''));
+  f.contentWindow.clMark(flags);
+  const bad = rows.filter((r, i) => !flags[i]).map(r => r.question);
+  document.getElementById('state').textContent = bad.length ? 'NOT VERIFIED' : 'VERIFIED';
+  msg(bad.length ? 'Mismatch: ' + bad.join(', ') : 'All ' + rows.length + ' answers match data.json');
+}
 const f = document.getElementById('f'), msg = t => document.getElementById('msg').textContent = t;
-function show(key) {
+let prefill = false;
+function show(key, fill) {
   current = key;
+  prefill = !!fill;
+  document.getElementById('b-verify').hidden = key !== 'bad' || !fill;
   f.src = '/form/' + key + '?t=' + Date.now();
   document.getElementById('state').textContent = key.toUpperCase() + ' FORM';
 }
@@ -193,11 +228,12 @@ async function clSave() {
 }
 function clKey(e) {  // F2 and F8 have no browser shortcut
   if (e.key === 'F2') { e.preventDefault(); clConvert(); }
-  else if (e.key === 'F8') { e.preventDefault(); show('bad'); msg(''); }
+  else if (e.key === 'F8') { e.preventDefault(); show('bad', true); msg(''); }
 }
 document.addEventListener('keydown', clKey);
 document.getElementById('b-new').onclick = clConvert;
-document.getElementById('b-back').onclick = () => { show('bad'); msg(''); };
+document.getElementById('b-back').onclick = () => { show('bad', true); msg(''); };
+document.getElementById('b-verify').onclick = clVerify;
 </script></body></html>
 """
 
@@ -239,6 +275,12 @@ def main():
                 except OSError as e:
                     return self.reply(f"Cannot read {FILES[key][0]}: {e}", 404)
                 return self.reply(html + FRAME_JS, ctype="text/html; charset=utf-8")
+            if path == "/data/good":
+                try:
+                    return self.reply(Path(FILES["good"][1]).read_text(encoding="utf-8"),
+                                      ctype="application/json")
+                except OSError:
+                    return self.reply("no data.json yet", 404)
             self.reply("Not found", 404)
 
         def do_POST(self):
