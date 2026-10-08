@@ -6,14 +6,15 @@ Each saved entry has: order, question, label, type, name, choices, answer.
   label    = the real <label> text, or null if the field has none
 
 Usage:
-    python fill_form.py good_website.html -o good_answers.json
-    python fill_form.py bad_website/bad_website.html -o bad_answers.json
-Open the printed URL, fill the form, press submit; the JSON is written and the
-server stops.
+    python fill_form.py
+Opens the bad website at http://127.0.0.1:8000. A bar at the bottom of each page
+has a link to switch to the other version and a button that fills in the form
+answers and saves them: good form -> data.json, bad form -> bad_data.json.
+Submitting the form does the same. Stop with Ctrl+C.
 """
 import argparse
 import json
-import threading
+import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
@@ -125,8 +126,13 @@ def extract_fields(html):
 
 
 INJECT = """
-document.querySelector('form').addEventListener('submit', async (e) => {
-  e.preventDefault();
+<div id="cl-bar" style="position:fixed;bottom:0;left:0;right:0;padding:8px 12px;background:#222;color:#fff;font:14px sans-serif;display:flex;gap:12px;align-items:center">
+  <a href="__OTHER_URL__" style="color:#8cf">__OTHER_TEXT__</a>
+  <button type="button" id="cl-fill">Fill form &amp; save to __OUT__</button>
+  <span id="cl-status"></span>
+</div>
+<script>
+async function clSave() {
   const answers = {};
   let n = 0;
   document.querySelectorAll('form input, form select, form textarea').forEach(el => {
@@ -137,47 +143,68 @@ document.querySelector('form').addEventListener('submit', async (e) => {
     else if (el.type === 'checkbox') answers[k] = el.checked;
     else answers[k] = el.value;
   });
-  const r = await fetch('/save', {method: 'POST', body: JSON.stringify(answers)});
-  document.body.innerHTML = '<p>' + (r.ok ? 'Saved. You can close this tab.' : 'Save failed.') + '</p>';
-});
+  const r = await fetch('/save?page=__PAGE__', {method: 'POST', body: JSON.stringify(answers)});
+  document.getElementById('cl-status').textContent = r.ok ? 'Saved to __OUT__' : 'Save failed';
+}
+document.getElementById('cl-fill').addEventListener('click', clSave);
+document.querySelector('form').addEventListener('submit', e => { e.preventDefault(); clSave(); });
+</script>
 """
+
+# page key -> (url, html file, output json, link to the other page)
+PAGES = {
+    "bad": ("/", "bad_website/bad_website.html", "bad_data.json", "/good", "Switch to the good form"),
+    "good": ("/good", "good_website.html", "data.json", "/", "Switch to the bad form"),
+}
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("html", help="HTML file containing a form")
-    ap.add_argument("-o", "--output", default="answers.json")
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("-p", "--port", type=int, default=8000)
+    ap.add_argument("--no-open", action="store_true", help="don't open the browser")
     args = ap.parse_args()
 
-    html = Path(args.html).read_text(encoding="utf-8")
-    fields = extract_fields(html)
-    page = (html + f"<script>{INJECT}</script>").encode("utf-8")
-    out = Path(args.output)
+    pages, fields = {}, {}
+    for key, (url, html_file, out, other_url, other_text) in PAGES.items():
+        html = Path(html_file).read_text(encoding="utf-8")
+        fields[key] = extract_fields(html)
+        bar = (INJECT.replace("__OTHER_URL__", other_url).replace("__OTHER_TEXT__", other_text)
+               .replace("__OUT__", out).replace("__PAGE__", key))
+        pages[url] = (html + bar).encode("utf-8")
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
-            self.send_response(200)
+            page = pages.get(self.path.split("?")[0])
+            self.send_response(200 if page else 404)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
-            self.wfile.write(page)
+            self.wfile.write(page or b"Not found")
 
         def do_POST(self):
+            key = self.path.split("page=")[-1]
             answers = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-            for f in fields:
+            rows = fields[key]
+            for f in rows:
                 f["answer"] = answers.get(f["key"])
-            out.write_text(json.dumps([{k: v for k, v in f.items() if k != "key"} for f in fields], indent=2, ensure_ascii=False), encoding="utf-8")
+            out = Path(PAGES[key][2])
+            out.write_text(json.dumps([{k: v for k, v in f.items() if k != "key"} for f in rows],
+                                      indent=2, ensure_ascii=False), encoding="utf-8")
             self.send_response(200)
             self.end_headers()
-            print(f"Saved {len(fields)} answers to {out}")
-            threading.Thread(target=server.shutdown).start()
+            print(f"Saved {len(rows)} answers to {out}")
 
         def log_message(self, *a):
             pass
 
+    url = f"http://127.0.0.1:{args.port}"
     server = HTTPServer(("127.0.0.1", args.port), Handler)
-    print(f"Open http://127.0.0.1:{args.port} and fill in the form")
-    server.serve_forever()
+    print(f"Running at {url}  (Ctrl+C to stop)")
+    if not args.no_open:
+        webbrowser.open(url)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
 
 
 if __name__ == "__main__":
