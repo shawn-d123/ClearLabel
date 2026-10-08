@@ -7,10 +7,11 @@ Each saved entry has: order, question, label, type, name, choices, answer.
 
 Usage:
     python fill_form.py
-Opens the bad website at http://127.0.0.1:8000. A bar at the bottom of each page
-has a link to switch to the other version and a button that fills in the form
-answers and saves them: good form -> data.json, bad form -> bad_data.json.
-Submitting the form does the same. Stop with Ctrl+C.
+Opens one browser page that starts on the bad form. Keys (or the buttons):
+    Alt+N  run Newform: convert the bad form into the good form and show it
+    Alt+S  fill & save the answers (good -> data.json, bad -> bad_data.json)
+    Alt+B  go back to the bad form
+Newform needs: pip install beautifulsoup4 lxml. Stop the server with Ctrl+C.
 """
 import argparse
 import json
@@ -125,14 +126,14 @@ def extract_fields(html):
     return p.fields
 
 
-INJECT = """
-<div id="cl-bar" style="position:fixed;bottom:0;left:0;right:0;padding:8px 12px;background:#222;color:#fff;font:14px sans-serif;display:flex;gap:12px;align-items:center">
-  <a href="__OTHER_URL__" style="color:#8cf">__OTHER_TEXT__</a>
-  <button type="button" id="cl-fill">Fill form &amp; save to __OUT__</button>
-  <span id="cl-status"></span>
-</div>
+BAD_FILE = "bad_website/bad_website.html"
+GOOD_FILE = "good_website/good_website.html"
+FILES = {"bad": (BAD_FILE, "bad_data.json"), "good": (GOOD_FILE, "data.json")}
+
+# Runs inside the form frame: collects answers, forwards key presses to the shell.
+FRAME_JS = """
 <script>
-async function clSave() {
+window.clCollect = function () {
   const answers = {};
   let n = 0;
   document.querySelectorAll('form input, form select, form textarea').forEach(el => {
@@ -143,19 +144,74 @@ async function clSave() {
     else if (el.type === 'checkbox') answers[k] = el.checked;
     else answers[k] = el.value;
   });
-  const r = await fetch('/save?page=__PAGE__', {method: 'POST', body: JSON.stringify(answers)});
-  document.getElementById('cl-status').textContent = r.ok ? 'Saved to __OUT__' : 'Save failed';
-}
-document.getElementById('cl-fill').addEventListener('click', clSave);
-document.querySelector('form').addEventListener('submit', e => { e.preventDefault(); clSave(); });
+  return answers;
+};
+document.addEventListener('keydown', e => parent.clKey(e));
+document.addEventListener('submit', e => { e.preventDefault(); parent.clSave(); });
 </script>
 """
 
-# page key -> (url, html file, output json, link to the other page)
-PAGES = {
-    "bad": ("/", "bad_website/bad_website.html", "bad_data.json", "/good", "Switch to the good form"),
-    "good": ("/good", "good_website/good_website.html", "data.json", "/", "Switch to the bad form"),
+SHELL = """<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>ClearLabel</title>
+<style>
+  body { margin: 0; font: 15px sans-serif; display: flex; flex-direction: column; height: 100vh; }
+  #bar { background: #222; color: #fff; padding: 8px 14px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  #bar button { font: inherit; cursor: pointer; }
+  #state { font-weight: bold; }
+  #msg { margin-left: auto; color: #8cf; }
+  iframe { flex: 1; border: 0; width: 100%; }
+</style></head><body>
+<div id="bar">
+  <span id="state">BAD FORM</span>
+  <button id="b-new">Alt+N &middot; Convert to good form</button>
+  <button id="b-save">Alt+S &middot; Fill &amp; save</button>
+  <button id="b-back">Alt+B &middot; Back to bad form</button>
+  <span id="msg"></span>
+</div>
+<iframe id="f" src="/form/bad"></iframe>
+<script>
+let current = 'bad';
+const f = document.getElementById('f'), msg = t => document.getElementById('msg').textContent = t;
+function show(key) {
+  current = key;
+  f.src = '/form/' + key + '?t=' + Date.now();
+  document.getElementById('state').textContent = key.toUpperCase() + ' FORM';
 }
+async function clConvert() {
+  msg('Converting...');
+  const r = await fetch('/convert', {method: 'POST'});
+  const t = await r.text();
+  if (r.ok) { show('good'); msg('Converted. Showing the good form.'); } else msg('Convert failed: ' + t);
+}
+async function clSave() {
+  const answers = f.contentWindow.clCollect();
+  const r = await fetch('/save?page=' + current, {method: 'POST', body: JSON.stringify(answers)});
+  msg(r.ok ? 'Saved to ' + (await r.text()) : 'Save failed');
+}
+function clKey(e) {
+  if (!e.altKey) return;
+  const k = e.key.toLowerCase();
+  if (k === 'n') { e.preventDefault(); clConvert(); }
+  else if (k === 's') { e.preventDefault(); clSave(); }
+  else if (k === 'b') { e.preventDefault(); show('bad'); msg(''); }
+}
+document.addEventListener('keydown', clKey);
+document.getElementById('b-new').onclick = clConvert;
+document.getElementById('b-save').onclick = clSave;
+document.getElementById('b-back').onclick = () => { show('bad'); msg(''); };
+</script></body></html>
+"""
+
+
+def convert():
+    """Run Newform: bad form -> good form. Returns an error string or None."""
+    try:
+        import Newform
+    except ImportError as e:
+        return f"{e} (run: pip install beautifulsoup4 lxml)"
+    Path(GOOD_FILE).parent.mkdir(exist_ok=True)
+    Newform.convert_bad_to_good(BAD_FILE, GOOD_FILE)
+    return None if Path(GOOD_FILE).exists() else "Newform did not write the good form"
 
 
 def main():
@@ -164,34 +220,42 @@ def main():
     ap.add_argument("--no-open", action="store_true", help="don't open the browser")
     args = ap.parse_args()
 
-    pages, fields = {}, {}
-    for key, (url, html_file, out, other_url, other_text) in PAGES.items():
-        html = Path(html_file).read_text(encoding="utf-8")
-        fields[key] = extract_fields(html)
-        bar = (INJECT.replace("__OTHER_URL__", other_url).replace("__OTHER_TEXT__", other_text)
-               .replace("__OUT__", out).replace("__PAGE__", key))
-        pages[url] = (html + bar).encode("utf-8")
-
     class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            page = pages.get(self.path.split("?")[0])
-            self.send_response(200 if page else 404)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
+        def reply(self, body, code=200, ctype="text/plain; charset=utf-8"):
+            if isinstance(body, str):
+                body = body.encode("utf-8")
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
             self.end_headers()
-            self.wfile.write(page or b"Not found")
+            self.wfile.write(body)
+
+        def do_GET(self):
+            path = self.path.split("?")[0]
+            if path == "/":
+                return self.reply(SHELL, ctype="text/html; charset=utf-8")
+            key = path.rsplit("/", 1)[-1]
+            if path.startswith("/form/") and key in FILES:
+                try:
+                    html = Path(FILES[key][0]).read_text(encoding="utf-8")
+                except OSError as e:
+                    return self.reply(f"Cannot read {FILES[key][0]}: {e}", 404)
+                return self.reply(html + FRAME_JS, ctype="text/html; charset=utf-8")
+            self.reply("Not found", 404)
 
         def do_POST(self):
+            path = self.path.split("?")[0]
+            if path == "/convert":
+                err = convert()
+                return self.reply(err or "ok", 500 if err else 200)
             key = self.path.split("page=")[-1]
             answers = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-            rows = fields[key]
+            html_file, out = FILES[key]
+            rows = extract_fields(Path(html_file).read_text(encoding="utf-8"))
             for f in rows:
-                f["answer"] = answers.get(f["key"])
-            out = Path(PAGES[key][2])
-            out.write_text(json.dumps([{k: v for k, v in f.items() if k != "key"} for f in rows],
-                                      indent=2, ensure_ascii=False), encoding="utf-8")
-            self.send_response(200)
-            self.end_headers()
+                f["answer"] = answers.get(f.pop("key"))
+            Path(out).write_text(json.dumps(rows, indent=2, ensure_ascii=False), encoding="utf-8")
             print(f"Saved {len(rows)} answers to {out}")
+            self.reply(out)
 
         def log_message(self, *a):
             pass
