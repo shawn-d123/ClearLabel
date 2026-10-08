@@ -1,8 +1,8 @@
 [
   {
     "order": 1,
-    "question": "First name:",
-    "label": "First name:",
+    "question": "First name",
+    "label": null,
     "type": "text",
     "name": "fname",
     "choices": null,
@@ -10,8 +10,8 @@
   },
   {
     "order": 2,
-    "question": "Last name:",
-    "label": "Last name:",
+    "question": "Last name",
+    "label": null,
     "type": "text",
     "name": "sname",
     "choices": null,
@@ -19,8 +19,8 @@
   },
   {
     "order": 3,
-    "question": "What medication do you need:",
-    "label": "What medication do you need:",
+    "question": "What medication do you need",
+    "label": null,
     "type": "text",
     "name": "medication",
     "choices": null,
@@ -28,11 +28,15 @@
   },
   {
     "order": 4,
-    "question": "How many do you need:",
-    "label": "How many do you need:",
-    "type": "text",
+    "question": "How many do you need",
+    "label": null,
+    "type": "select",
     "name": "number",
-    "choices": null,
+    "choices": [
+      "1",
+      "2",
+      "3"
+    ],
     "answer": "2"
   }
 ]
