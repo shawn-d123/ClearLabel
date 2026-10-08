@@ -11,8 +11,8 @@ Opens one browser page that starts on the bad form.
     F2  run Newform: convert the bad form into the good form and show it
     F8  go back to the bad form, filled in from data.json; then click Verify
         to check the old form's values still match data.json
-    Submit button on a form: saves the answers (good -> data.json,
-    bad -> bad_data.json)
+    Submit on the good form: saves data.json, then after 1.5s returns to the old
+    form filled in from it. Submit on the old form shows 'Submitted successfully'.
 Newform needs: pip install beautifulsoup4 lxml. Stop the server with Ctrl+C.
 """
 import argparse
@@ -223,8 +223,16 @@ async function clSave() {
   const r = await fetch('/save?page=' + current, {method: 'POST', body: JSON.stringify(answers)});
   if (!r.ok) return msg('Save failed');
   const out = await r.text();
-  document.getElementById('state').textContent = 'SAVED';
-  msg('Answers saved to ' + out);
+  const state = document.getElementById('state');
+  if (current === 'good') {
+    state.textContent = 'SAVED';
+    msg('Answers saved to ' + out + '. Going back to the old form...');
+    setTimeout(() => show('bad', true), 1500);
+  } else {
+    state.textContent = 'SUBMITTED';
+    msg('Submitted successfully');
+    document.getElementById('b-verify').hidden = true;
+  }
 }
 function clKey(e) {  // F2 and F8 have no browser shortcut
   if (e.key === 'F2') { e.preventDefault(); clConvert(); }
